@@ -9,7 +9,8 @@
  *   rows                            chip rows, default CHIP_ROWS ([] = no chip)
  *   totalFrames                     frames to precompute the chip schedule for (FILM_TOTAL)
  * useCurrentFrame() must be the GLOBAL film frame: mount it at film level, or inside
- * <Sequence from={-FILM_START[id]}> in a chapter preview. Occupies y ~138..262.
+ * <Sequence from={-FILM_START[id]}> in a chapter preview. Occupies TRACKER_Y - 52 .. TRACKER_Y + 72
+ * (y ~138..262 at 9:16). Mounted only with FILM.tracker (overlays/Overlays.tsx).
  */
 import React, { useMemo } from "react";
 import { AbsoluteFill, useCurrentFrame } from "remotion";
@@ -31,8 +32,8 @@ export type TrackerProps = {
   totalFrames?: number;
 };
 
-const L = 90;
-const R = 990;
+const L = Math.round(WIDTH / 12); // 90 at a 1080 px wide frame
+const R = WIDTH - L;
 export const CHIP_TOP = TRACKER_Y + 26;
 
 const cache = new Map<string, ChipSeg[]>();

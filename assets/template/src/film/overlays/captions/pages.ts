@@ -3,32 +3,49 @@
  * Pure functions (no React), so the rules are easy to test.
  *
  *   buildPages(lines, totalFrames) -> Page[] sorted by start
+ *   auditPages(pages)              -> {id, problem}[]: what the CaptionsQA sheet prints in red
+ *   pageStats(page)                -> {rows, seconds}: rows it wraps to, seconds on screen
  *
  * Verified rules (each one fixed a real bug, see the skill's lessons):
- * 1. No stacked text: a page is fully faded out 2 frames before the next page's first word
- *    appears (normally end+6 -> end+16, pulled earlier with a softer curve when the next page
- *    comes sooner). Pages share one position, so two must never be visible at once.
+ * 1. No stacked text: a page reaches 0 opacity CLEAR (2) frames before the next page's first
+ *    word becomes visible (each word fades in over [at - WORD_LEAD, at + WORD_IN], so its first
+ *    visible frame is at - WORD_LEAD + 1): fade.to = next.start - WORD_LEAD + 1 - CLEAR.
+ *    Normally end+6 -> end+16; pulled earlier (FADE frames, softer curve) when the next page
+ *    comes sooner. Pages share one position, so two must never be visible at once.
  * 2. End title: the LAST line of the film is never paged, never fades out, and settles (slow
  *    4% scale-up + gold glow) from its first word to the final frame. It is sized down to fit
  *    one row if it is long (keep it short: 1-3 words).
- * 3. Paging: if a line would wrap to more than MAX_ROWS (2) rows at caption size, it is split
- *    at its spoken phrase starts (`phrases`), preferring breaks after punctuation, into as few
- *    pages as fit; a phrase too long on its own is split into balanced pieces. Each page
- *    builds word by word and hands over like a separate line.
+ * 3. Paging: if a line would wrap to more than MAX_ROWS (2) rows at caption size in the caption
+ *    box (CAPTION_BAND's width), it is split at its spoken phrase starts (`phrases`), preferring
+ *    breaks after punctuation, into as few pages as fit; a phrase too long on its own is split
+ *    into balanced pieces. Each page builds word by word and hands over like a separate line.
+ * Words are split on spaces: a language written without spaces (Chinese, Japanese, Thai) is
+ * one "word" per line here, which auditPages flags (not supported yet).
  */
 import { DISPLAY } from "../../../theme/fonts";
+import { CAPTION_BAND, CAPTION_SIZE as LAYOUT_CAPTION_SIZE, WIDTH } from "../../../theme/layout";
 import { sec } from "../../../theme/timeline";
 import { EASE } from "../../../lib/ease";
 import { textWidth } from "../../../lib/measure";
 import type { CaptionLine } from "./types";
 
-export const CAPTION_SIZE = 76;
+export const CAPTION_SIZE = LAYOUT_CAPTION_SIZE; // 76 px at 9:16 (src/theme/layout.ts)
 export const CAPTION_LS = -1.5;
 export const WORD_GAP = 0.26; // em, the margin after each word
-export const BOX_W = 900; // caption box: left 90, right 90
-export const MAX_ROWS = 2; // 2 rows x 85 px sit inside the caption band (y 1300..1560)
-export const END_SIZE = 112; // end title font size (max)
-export const END_W = 1000; // end title box: left 40, right 40
+export const BOX_W = CAPTION_BAND.right - CAPTION_BAND.left; // caption box = the band (x 150..930 at 9:16)
+export const MAX_ROWS = 2; // 2 rows x 1.12 line height sit inside the caption band
+export const END_SIZE = Math.round((CAPTION_SIZE * 112) / 76); // end title font size (max): 112 at 9:16
+export const END_W = WIDTH - 80; // end title box: left 40, right 40
+
+/** A word fades in over [at - WORD_LEAD, at + WORD_IN]; its first visible frame is at - WORD_LEAD + 1. */
+export const WORD_LEAD = 2;
+export const WORD_IN = 8;
+const CLEAR = 2; // frames with no caption at all between two pages (rule 1)
+const FADE = 6; // shortest page fade-out
+const READ_WPS = 3; // reading pace: a page stays up at least words / 3 seconds (auditPages)
+
+/** Last frame a page may still be visible at, so CLEAR empty frames precede a word at `nextAt`. */
+const clearBefore = (nextAt: number) => nextAt - WORD_LEAD + 1 - CLEAR;
 const FONT = (size: number) => `800 ${size}px "${DISPLAY}"`;
 
 export type Page = {
@@ -180,9 +197,31 @@ export const buildPages = (lines: readonly CaptionLine[], totalFrames: number): 
       return;
     }
     const next = pages[i + 1];
-    const to = next ? next.start - 2 : Number.POSITIVE_INFINITY;
+    const to = next ? clearBefore(next.start) : Number.POSITIVE_INFINITY;
     if (to >= p.end + 16) p.fade = { from: p.end + 6, to: p.end + 16, ease: EASE.in };
-    else p.fade = { from: Math.min(p.end, to - 6), to, ease: EASE.inOut };
+    else p.fade = { from: Math.min(p.end, to - FADE), to, ease: EASE.inOut };
   });
   return pages;
+};
+
+/** Rows a page wraps to and seconds it is on screen (the end title: until the last frame). */
+export const pageStats = (p: Page) => ({
+  rows: rowsOf(p.words.map((w) => w.word), p.size),
+  seconds: ((p.final ? p.fade.from : p.fade.to) - p.start) / sec(1),
+});
+
+/** Every page that breaks a caption rule, with a short reason (empty when all pass). */
+export const auditPages = (pages: readonly Page[]): { id: string; problem: string }[] => {
+  const out: { id: string; problem: string }[] = [];
+  for (const p of pages) {
+    const { rows, seconds } = pageStats(p);
+    const box = p.final ? END_W : BOX_W;
+    const wide = p.words.find((w) => textWidth(w.word, FONT(p.size), CAPTION_LS) > box);
+    if (!p.final && rows > MAX_ROWS) out.push({ id: p.id, problem: `${rows} rows > ${MAX_ROWS}` });
+    if (wide) out.push({ id: p.id, problem: `"${wide.word.slice(0, 24)}" is wider than the box (split it)` });
+    if (p.fade.to <= p.start) out.push({ id: p.id, problem: "never visible (fades out before its first word)" });
+    else if (seconds < p.words.length / READ_WPS)
+      out.push({ id: p.id, problem: `${seconds.toFixed(2)} s on screen < reading time ${(p.words.length / READ_WPS).toFixed(2)} s` });
+  }
+  return out;
 };

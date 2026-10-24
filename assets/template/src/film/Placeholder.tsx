@@ -1,7 +1,8 @@
 /**
  * Stand-in for a chapter that has no component yet: a soft disc in the HERO box with the
- * chapter id, working title and the counter range it covers, plus a gold arc that fills with
- * the chapter's own progress (handy for timing the script before any art exists).
+ * chapter id, working title and the counter range it covers (with FILM.tracker; otherwise its
+ * length and how it enters), plus a gold arc that fills with the chapter's own progress (handy
+ * for timing the script before any art exists).
  *
  *   <ChapterPlaceholder id="C05" />     chapter-local frames (frame 0 = chapter start)
  *   placeholderFor("C05")               memoised React.FC for registries / previews
@@ -14,20 +15,26 @@ import { C } from "../theme/colors";
 import { DISPLAY, MONO } from "../theme/fonts";
 import { HEIGHT, HERO, WIDTH } from "../theme/layout";
 import { EASE, soft, tween } from "../lib/ease";
+import { FILM } from "./config";
 import { ChapterId, chapterFrames, chapterSpec } from "./chapters";
 import { counterLabel } from "./data/tracker";
 import { chapterCounterRange, counterNumber } from "./lib/counter";
 
 const R = 300;
 
+/** "COUNT 02  →  COUNT 04": the counter values this chapter passes through. */
+const counterRange = (id: ChapterId) => {
+  const [lo, hi] = chapterCounterRange(id);
+  const a = counterLabel(counterNumber(lo));
+  const b = counterLabel(counterNumber(hi));
+  return a === b ? a : `${a}  →  ${b}`;
+};
+
 export const ChapterPlaceholder: React.FC<{ id: ChapterId }> = ({ id }) => {
   const frame = useCurrentFrame();
   const dur = chapterFrames(id);
   const spec = chapterSpec(id);
-  const [lo, hi] = chapterCounterRange(id);
-  const a = counterLabel(counterNumber(lo));
-  const b = counterLabel(counterNumber(hi));
-  const range = a === b ? a : `${a}  →  ${b}`;
+  const range = FILM.tracker ? counterRange(id) : `${spec.durationSec.toFixed(1)} S · ${spec.transition.toUpperCase()}`;
 
   const push = tween(frame, 0, dur, [1, 1.06], EASE.inOut);
   const intro = soft(frame, 4);

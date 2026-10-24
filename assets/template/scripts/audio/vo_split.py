@@ -3,9 +3,11 @@
 usage: nice -n 10 python3 scripts/audio/vo_split.py inbox/narration.mp3 [--apply-durations] [--dry] [--force]
 
 Record (or generate) the WHOLE script as one take, in chapter order, with a short pause
-(>= 0.3 s) between chapters. Then this script:
-  1. normalises the take to -16 LUFS (two-pass linear loudnorm) and pads 0.3 s of silence at
-     both ends (room for the first/last cut) -> inbox/<take>-norm.wav
+(>= 0.3 s) between chapters. Commit before re-running it: public/vo/*.wav, voTiming.ts and
+vo-words.md are in git, so `git diff` shows what moved and `git checkout` gives the old take back.
+It needs whisper.cpp and its model (checked first; scripts/doctor.sh --voice). Then this script:
+  1. normalises the take to -16 LUFS (two-pass linear loudnorm; a WARNING if the peaks forced
+     dynamic mode) and pads 0.3 s of silence at both ends -> inbox/<take>-norm.wav
   2. hears it with whisper (word guides) and measures its energy envelope
   3. finds each chapter's speech span: the boundary between two chapters is the LONGEST
      silence between the last word of one and the first word of the next (whisper times
@@ -16,14 +18,19 @@ Record (or generate) the WHOLE script as one take, in chapter order, with a shor
   5. VERIFIES every clip: transcribes it and checks its first and last words against the
      captions (lines.ts). Any MISMATCH stops here (nothing written) unless --force
   6. measures each word's onset inside its clip (onsets.py: mean error ~22 ms), then applies
-     hand fixes from briefs/vo-fix.json: {"C02": {"5": ["grows", 1.234]}} = word index 5 must be
-     "grows" and starts 1.234 s into public/vo/C02.wav (find it in Audacity / a spectrogram)
+     hand fixes from briefs/vo-fix.json: {"C02": {"5": ["grows", 1.234]}} = word index 5 (from 0)
+     must be "grows" and starts 1.234 s into public/vo/C02.wav; {"C05": {"end": {"1": 5.37}}} =
+     line 1 (numbered as in vo-words.md) ends at 5.37 s into public/vo/C05.wav (for a line whose
+     end runs on into a breath: caption fades and the mix check use line ends). Measure both
+     with scripts/audio/word_probe.py <id> <from> <to> (a spectrogram image plus envelopes)
   7. places each chapter's speech in its window: at its planned start (lines.ts) or later, at
      least GAP after the previous chapter's speech, ending 0.15 s before the window ends;
      --apply-durations lengthens chapters.ts windows that are too short (else: OVERFLOW)
   8. writes src/film/data/voTiming.ts (captions + previews use it) and briefs/vo-words.md
-     (builders sync beats to it), and prints a report. --dry: report only, writes nothing.
-Rerunnable: same take + same lines -> same clips. After it: re-time beats.ts to vo-words.md.
+     (builders sync beats to it), and prints a report, with each chapter's largest word move
+     against the previous voTiming.ts. --dry: report only, writes nothing in the project.
+Rerunnable: same take + same lines -> same clips. After ANY re-run on a film with built chapters:
+python3 scripts/qa/sync_drift.py, then re-time what it flags (beats.ts only).
 """
 import array
 import json
@@ -35,7 +42,7 @@ import wave
 
 sys.path.insert(0, os.path.dirname(__file__))
 import project as P  # noqa: E402
-from aligner import HOP, SIL, envelope, guides, norm, whisper  # noqa: E402
+from aligner import HOP, SIL, envelope, guides, norm, preflight, whisper  # noqa: E402
 from onsets import onsets, word_end  # noqa: E402
 from util import SR, ff, loudnorm_linear  # noqa: E402
 
@@ -120,23 +127,33 @@ def measure(cid, clip, words, lns, fixes, tmp):
     """Clip-local onsets (fixes applied), kinds, whisper words, line [start, end, words]."""
     on, how, heard, env = onsets(clip, words, tmp)
     auto = list(on)
-    for k, (w, t) in fixes.get(cid, {}).items():
+    fx = fixes.get(cid, {})
+    for k, v in fx.items():
+        if k == "end":
+            continue
+        w, t = v
         k = int(k)
         assert norm(words[k]) == norm(w), f"{cid} word {k} is {words[k]!r}, vo-fix.json expects {w!r}"
         on[k], how[k] = t, "H"
     assert all(a < b for a, b in zip(on, on[1:])), f"{cid}: onsets out of order after vo-fix.json"
+    ends = {int(n): float(t) for n, t in fx.get("end", {}).items()}  # line number (from 1) -> end
     out, k = [], 0
-    for ln in lns[cid]:
+    for li, ln in enumerate(lns[cid], 1):
         n = len(ln["text"].split(" "))
         nxt = auto[k + n] if k + n < len(on) else len(env) * HOP
-        out.append((on[k], word_end(env, auto[k + n - 1], nxt), on[k:k + n]))
+        end = word_end(env, auto[k + n - 1], nxt)
+        if li in ends:
+            assert ends[li] > on[k + n - 1], f"{cid} line {li}: vo-fix.json end {ends[li]} is before its last word"
+            end = ends[li]
+        out.append((on[k], end, on[k:k + n]))
         k += n
+    how = how + [f" E{li}" for li in sorted(ends)]
     return on, how, heard, out
 
 
 def place(chs, measured, apply):
     """Chapter-local placement of each clip -> voTiming entries + new durations + report rows."""
-    out, rows, new, prev_end = {}, [], {}, -1.0
+    out, rows, new, prev_end = {}, [], {}, -1.0  # GAP between chapters' speech holds by construction
     fps, tr = P.fps(), P.transition() / P.fps()
     g = 0.0  # global start (s) of the current chapter
     for k, c in enumerate(chs):
@@ -169,12 +186,29 @@ def place(chs, measured, apply):
     return out, new, rows
 
 
+def moves(old, out):
+    """One report line per chapter: its largest word move against the previous voTiming.ts."""
+    rows = []
+    for cid, v in out.items():
+        a = [w for ln in old.get(cid, {}).get("lines", []) for w in ln["words"]]
+        b = [w for ln in v["lines"] for w in ln["words"]]
+        if not a:
+            rows.append(f"{cid}: new")
+        elif len(a) != len(b):
+            rows.append(f"{cid}: caption words changed ({len(a)} -> {len(b)}): re-check every beat")
+        else:
+            rows.append(f"{cid}: max word move {max(abs(x - y) for x, y in zip(a, b)):.2f} s")
+    return rows
+
+
 def main(take, apply, dry, force):
     chs, lns = P.chapters(), P.lines()
     items = [(c["id"], P.words_of(lns, c["id"])) for c in chs if lns.get(c["id"])]
     fixes = json.load(open(FIX_PATH)) if os.path.exists(FIX_PATH) else {}
+    preflight()  # whisper-cli + model, before any slow step
+    old = P.vo_timing()
     tmp = tempfile.mkdtemp()
-    normed = os.path.splitext(take)[0] + "-norm.wav"
+    normed = os.path.join(tmp, "norm.wav") if dry else os.path.splitext(take)[0] + "-norm.wav"
     padded = os.path.join(tmp, "padded.wav")
     ff("-i", take, "-ac", "1", "-ar", str(SR), "-af", f"adelay={PAD * 1000:.0f},apad=pad_dur={PAD}",
        "-c:a", "pcm_f32le", padded)
@@ -224,6 +258,9 @@ def main(take, apply, dry, force):
             P.apply_durations(new)
         print(f"\nwrote public/vo/*.wav, src/film/data/voTiming.ts, briefs/vo-words.md"
               + (f", chapters.ts durations {new}" if new else ""))
+    if old:
+        print("\n".join(["", "Word moves against the previous voTiming.ts (chapter-local):", *moves(old, out)]))
+        print("Next: python3 scripts/qa/sync_drift.py (every built chapter), then re-time what it flags.")
     shutil.rmtree(tmp)
     return out
 

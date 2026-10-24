@@ -1,15 +1,21 @@
 """Words heard in a recording, and where: whisper.cpp + energy envelopes (stdlib only).
 
-  norm(word)                 comparable form: lower-case letters/digits, numbers spelled out,
-                             British spellings mapped to American (vapour = vapor, centre = center)
+  norm(word)                 comparable form: lower-case letters and digits in any script, accents
+                             dropped (été = ete); in English also numbers spelled out and British
+                             spellings mapped to American (vapour = vapor, centre = center)
   envelope(path, band)       10 ms RMS, 5 ms hop, dBFS at 16 kHz; band "bb" broadband (> 70 Hz),
                              "lo" voiced (80-1200 Hz), "hi" fricative (> 3.5 kHz)
   whisper(path, tmp)         [(dtw_time, word)] heard by whisper-cli (sub-word tokens joined)
   guides(script, heard)      whisper time for every script word (difflib match, gaps interpolated)
   wclass(word), syl(word)    first-sound class (F fricative, P voiceless stop, H, V vowel, C other)
-                             and syllables from spelling (onsets.py uses both)
+                             and syllables from spelling (onsets.py uses both; English only)
+  preflight()                exits with the install lines if whisper-cli or the model is missing
 Setup: `brew install whisper-cpp`, model in ~/.cache/whisper/ggml-base.en.bin (or set
 WHISPER_MODEL). whisper word times drift 0.2-0.6 s: use them as GUIDES only, never as cuts.
+Narration not in English: WHISPER_LANG=fr (de, es, ar, ru, ...) uses the multilingual model
+~/.cache/whisper/ggml-base.bin unless WHISPER_MODEL is set; spelling rules are then switched off.
+Languages written without spaces (Chinese, Japanese, Thai) are not supported yet.
+WHISPER_DTW overrides the DTW preset (default: the model name without "ggml-" and any "-q5_1").
 """
 import array
 import difflib
@@ -17,14 +23,20 @@ import json
 import math
 import os
 import re
+import shutil
 import subprocess
+import sys
+import unicodedata
 
 HOP = 0.005
 # "Silence" threshold (dBFS). -70 suits clean TTS/studio takes; for a noisy room raise it
 # (VO_SIL=-60) or denoise first (ffmpeg -af afftdn). vo_split.py warns when the floor is high.
 SIL = float(os.environ.get("VO_SIL", "-70"))
 ON = SIL + 5
-MODEL = os.environ.get("WHISPER_MODEL", os.path.expanduser("~/.cache/whisper/ggml-base.en.bin"))
+LANG = os.environ.get("WHISPER_LANG", "en").lower()
+MODEL = os.environ.get("WHISPER_MODEL") or os.path.expanduser(
+    "~/.cache/whisper/ggml-base.en.bin" if LANG == "en" else "~/.cache/whisper/ggml-base.bin")
+MODEL_URL = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/" + os.path.basename(MODEL)
 BANDS = {"bb": "highpass=f=70", "lo": "highpass=f=80,lowpass=f=1200,lowpass=f=1200",
          "hi": "highpass=f=3500,highpass=f=3500"}
 ONES = "zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen " \
@@ -50,13 +62,27 @@ UK_US = [(r"(?<=\w{3})our(s|ed|ing|ful|ite|ites)?$", r"or\1"), (r"(?<=\w{2})tre(
 
 
 def norm(w):
-    w = w.lower().replace("’", "'").replace("'", "")
-    w = re.sub(r"[^a-z0-9-]", "", w).strip("-")
+    w = unicodedata.normalize("NFKD", w.lower().replace("’", "'").replace("'", ""))
+    w = "".join(c for c in w if not unicodedata.combining(c))  # accents off: été = ete
+    w = re.sub(r"[^\w-]", "", w).replace("_", "").strip("-")  # letters and digits in any script
+    if LANG != "en":
+        return w
     if w.isdigit():
         w = spell(int(w))
     for pat, sub in UK_US:
         w = re.sub(pat, sub, w)
     return ALIAS.get(w, w)
+
+
+def preflight():
+    """Stop early, with the install lines, when whisper-cli or its model is missing."""
+    miss = []
+    if not shutil.which("whisper-cli"):
+        miss.append("whisper-cli: brew install whisper-cpp   (Linux: build whisper.cpp, put whisper-cli on PATH)")
+    if not os.path.exists(MODEL):
+        miss.append(f"model {MODEL}:\n    mkdir -p {os.path.dirname(MODEL)} && curl -L -o {MODEL} {MODEL_URL}")
+    if miss:
+        sys.exit("vo_split needs whisper.cpp (scripts/doctor.sh --voice checks it):\n  " + "\n  ".join(miss))
 
 
 def envelope(path, band="bb"):
@@ -73,9 +99,15 @@ def whisper(path, tmp):
     """[(dtw_time, word)] heard by whisper. DTW token times are the most accurate whisper gives."""
     w16, out = os.path.join(tmp, "w16.wav"), os.path.join(tmp, "w")
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", path, "-ar", "16000", "-ac", "1", w16], check=True)
-    preset = re.sub(r"^ggml-|\.bin$", "", os.path.basename(MODEL))  # "base.en"
-    subprocess.run(["nice", "-n", "10", "whisper-cli", "-m", MODEL, "-t", "2", "-nfa", "-dtw", preset,
-                    "-f", w16, "-ojf", "-of", out, "-np"], check=True, capture_output=True)
+    preset = os.environ.get("WHISPER_DTW") or re.sub(r"-q\d+_\d+$", "", re.sub(r"^ggml-|\.bin$", "", os.path.basename(MODEL)))
+    try:
+        subprocess.run(["nice", "-n", "10", "whisper-cli", "-m", MODEL, "-l", LANG, "-t", "2", "-nfa", "-dtw", preset,
+                        "-f", w16, "-ojf", "-of", out, "-np"], check=True, capture_output=True, text=True)
+    except subprocess.CalledProcessError as e:
+        err = (e.stderr or "").strip().splitlines()  # the error is first; a usage dump may follow
+        shown = err if len(err) <= 14 else err[:8] + ["..."] + err[-5:]
+        sys.exit(f"whisper-cli failed (exit {e.returncode}, model {MODEL}, dtw preset {preset}, language {LANG}):\n"
+                 + "\n".join(shown))
     words = []
     with open(out + ".json") as f:
         segs = json.load(f)["transcription"]

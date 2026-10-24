@@ -1,15 +1,17 @@
 # Kits
 
-A kit is a parametric character, object or world that appears in more than one chapter
-(a planet, a cell, a machine, a city skyline). Build kits BEFORE the chapters that use them,
+A kit is anything drawn in more than one chapter: a character, a machine, a world, a chart, a map,
+a device mock-up, a diagram (a planet, a cell, a city skyline, a bar chart). Build kits BEFORE the chapters that use them,
 so every chapter draws the same thing the same way and handoffs match by construction.
 
 The pattern (proven on a 2.5-minute film with three kits):
-- One component driven by a few numbers (`<Orb x y r stretch halo gold />`), ideally one
-  time-like parameter (`stage`, `year`, `age`) that morphs it, plus `pose`/`size` props.
+- One component driven by its state: a few numbers (`<Orb x y r stretch halo gold />`), plus
+  what changes: `stage` or `year` for a subject that grows, `progress` 0..1 for a route or a
+  machine, `reveal` (a count) for a chart or diagram that builds, `step` for a UI, or the data
+  itself (`<BarChart data={...} reveal={3} />`); plus `pose`/`size` props.
 - An `anchors()` function that returns named points (where to attach a label, a hand, a
   light) so chapters never reach into the kit's internals.
-- Unique SVG ids: `<prefix>-<name>` with a prefix per chapter (or `useId()` per instance);
+- Unique SVG ids: `<prefix>-<component>-<name>` with the lower-case chapter id as prefix (or `useId()` per instance);
   define each gradient/filter ONCE per page.
 - Deterministic motion helpers (`breathe(seed, clock)`) so two chapters continue the same
   wobble across a handoff by passing the same seed and clock.

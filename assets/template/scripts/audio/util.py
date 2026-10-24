@@ -2,11 +2,13 @@
 
   ff(*args)                       run ffmpeg quietly (raises on error)
   to_wav(src, dst, af)            decode anything -> 48 kHz mono 16-bit WAV, optional filter
-  decode(src, af)                 -> list of 48 kHz mono float samples (32-bit: nothing clips)
+  decode(src, af)                 -> array of 48 kHz mono float32 samples (nothing clips; 4 bytes
+                                  a sample, so a 10-minute film stays well under 1 GB of RAM)
   read(path) / write(path, s)     16-bit mono WAV <-> floats (write scales down if it would clip)
   peak_db(path)                   sample peak in dBFS
   normalize_peak(src, dst, db, af)  filter, then scale the peak to `db` dBFS (float intermediate)
-  loudnorm_linear(src, dst, I, TP)  two-pass EBU R128, linear mode (no dynamics change)
+  loudnorm_linear(src, dst, I, TP)  two-pass EBU R128, linear mode (no dynamics change); warns when
+                                  loudnorm falls back to dynamic (peaks too hot for a linear gain)
   silences(path, noise_db, min_d)   [(start, end)] from ffmpeg silencedetect
   duration(path)                  seconds (ffprobe)
 Rules baked in: work in 32-bit float, fades AFTER filters, `asetpts=PTS-STARTPTS` after atrim.
@@ -34,13 +36,14 @@ def to_wav(src, dst, af=None):
 
 
 def decode(src, af=None):
-    """Decode anything to 48 kHz mono float samples (32-bit, so nothing clips)."""
+    """Decode anything to 48 kHz mono float32 samples (an array.array("f"): index, slice and
+    iterate it like a list; it needs ~8x less memory than a list of Python floats)."""
     cmd = ["ffmpeg", "-loglevel", "error", "-i", src, "-ac", "1", "-ar", str(SR)]
     if af:
         cmd += ["-af", af]
     a = array.array("f")
     a.frombytes(subprocess.run([*cmd, "-f", "f32le", "-"], check=True, capture_output=True).stdout)
-    return list(a)
+    return a
 
 
 def read(path):
@@ -78,7 +81,9 @@ def normalize_peak(src, dst, target_db=-3.0, af_extra=None):
 
 
 def loudnorm_linear(src, dst, target=-16.0, tp=-1.5):
-    """Two-pass EBU R128 normalisation in linear mode (no dynamics change)."""
+    """Two-pass EBU R128 normalisation in linear mode (no dynamics change). If the take's peaks are
+    too hot for a linear gain, loudnorm silently falls back to dynamic mode: this prints a WARNING
+    (it does not stop, because ordinary TTS takes often peak above -1.5 dBTP after +2-4 dB)."""
     probe = subprocess.run(
         ["ffmpeg", "-hide_banner", "-i", src, "-af",
          f"loudnorm=I={target}:TP={tp}:LRA=11:print_format=json", "-f", "null", "-"],
@@ -88,8 +93,13 @@ def loudnorm_linear(src, dst, target=-16.0, tp=-1.5):
          for k in ["input_i", "input_tp", "input_lra", "input_thresh", "target_offset"]}
     af = (f"loudnorm=I={target}:TP={tp}:LRA=11:linear=true:"
           f"measured_I={m['input_i']}:measured_TP={m['input_tp']}:measured_LRA={m['input_lra']}:"
-          f"measured_thresh={m['input_thresh']}:offset={m['target_offset']}")
-    to_wav(src, dst, af)
+          f"measured_thresh={m['input_thresh']}:offset={m['target_offset']}:print_format=json")
+    err = subprocess.run(["ffmpeg", "-y", "-hide_banner", "-nostats", "-i", src, "-ac", "1", "-ar", str(SR),
+                          "-af", af, "-c:a", "pcm_s16le", dst], capture_output=True, text=True, check=True).stderr
+    kind = re.search(r'"normalization_type"\s*:\s*"(\w+)"', err)
+    if kind and kind.group(1) != "linear":
+        print(f"WARNING: {os.path.basename(src)}: loudnorm fell back to {kind.group(1)} (peaks too hot for linear "
+              f"{target:g} LUFS / {tp:g} dBTP); the voice's dynamics were changed")
 
 
 def silences(path, noise_db=-36, min_d=0.1):

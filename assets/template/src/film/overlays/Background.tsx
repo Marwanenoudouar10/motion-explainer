@@ -1,10 +1,14 @@
 /**
  * Continuous backdrop under every chapter: a deep radial gradient that slowly warms over the
  * film (a smooth colour blend, never a switch), plus drifting out-of-focus specks so even a
- * still shot is alive. Retint it through palette C.
+ * still shot is alive. Retint it through palette C. This is the demo's glowing flat-2D look:
+ * for another style (paper, line art, data-viz minimal) pass arc={false} or replace this file
+ * (and soften or drop Grain.tsx) to match the brief.
  *
  *   <Background totalFrames={FILM_TOTAL} />
  *     totalFrames  film length in frames; warmth goes 0 -> 1 across it
+ *     arc          true (default): the backdrop warms 0 -> 1 across the film (the demo's journey
+ *                  look); false: a constant backdrop
  * useCurrentFrame() must be the GLOBAL film frame (wrap in <Sequence from={-start}> when
  * previewing one chapter).
  */
@@ -22,12 +26,14 @@ const SPECKS = Array.from({ length: 34 }, (_, i) => ({
   speed: 0.2 + random(`bg-s${i}`) * 0.6,
 }));
 
-export const Background: React.FC<{ totalFrames: number }> = ({ totalFrames }) => {
+export const Background: React.FC<{ totalFrames: number; arc?: boolean }> = ({ totalFrames, arc = true }) => {
   const frame = useCurrentFrame();
-  const warm = interpolate(frame, [0, Math.max(1, totalFrames)], [0, 1], {
-    extrapolateLeft: "clamp",
-    extrapolateRight: "clamp",
-  });
+  const warm = arc
+    ? interpolate(frame, [0, Math.max(1, totalFrames)], [0, 1], {
+        extrapolateLeft: "clamp",
+        extrapolateRight: "clamp",
+      })
+    : 0;
   const mid = interpolateColors(warm, [0, 0.35, 0.65, 1], [C.bg1, C.bg1, C.bg2, C.bg2]);
 
   return (

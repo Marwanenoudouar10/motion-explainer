@@ -4,31 +4,33 @@
  *   <Captions lines={FILM_LINES} />          totalFrames defaults to FILM_TOTAL
  *     lines  CaptionLine[] in GLOBAL seconds (captions/types.ts): one per script sentence
  * Timing rules live in captions/pages.ts (no stacked lines, paging to max 2 rows, the last
- * line is an end title held to the final frame). Each word rises in, de-blurs and lands
- * 2 frames before its spoken onset. Emphasis words are gold (the one accent colour).
- * useCurrentFrame() must be the GLOBAL film frame. Caption block centred on CAPTION_Y.
+ * line is an end title held to the final frame). Each word rises in and de-blurs over
+ * [onset - WORD_LEAD, onset + WORD_IN]. Emphasis words are gold (the one accent colour).
+ * useCurrentFrame() must be the GLOBAL film frame. Caption block centred on CAPTION_Y, inside
+ * CAPTION_BAND (x and y from src/theme/layout.ts). The halo behind the text is C.bg0: near-black
+ * on a dark palette, paper-coloured on a light one (dark text), so it always lifts the text.
  */
 import React, { useMemo } from "react";
 import { AbsoluteFill, useCurrentFrame } from "remotion";
 import { C } from "../../theme/colors";
 import { DISPLAY } from "../../theme/fonts";
-import { CAPTION_Y } from "../../theme/layout";
+import { CAPTION_BAND, CAPTION_SIZE, CAPTION_Y, WIDTH } from "../../theme/layout";
 import { EASE, tween } from "../../lib/ease";
 import { useFontsReady } from "../../lib/measure";
 import { FILM_TOTAL } from "../chapters";
-import { CAPTION_LS, Page, WORD_GAP, buildPages, clean } from "./captions/pages";
+import { CAPTION_LS, Page, WORD_GAP, WORD_IN, WORD_LEAD, buildPages, clean } from "./captions/pages";
 import type { CaptionLine } from "./captions/types";
 
 export type { CaptionLine } from "./captions/types";
 
-const END_Y = CAPTION_Y + 60; // end title sits a touch lower, on the dark sleeve
+const END_Y = CAPTION_Y + Math.round((CAPTION_SIZE * 60) / 76); // end title sits a touch lower (+60 at 9:16)
 
 const PageView: React.FC<{ page: Page; frame: number; total: number }> = ({ page, frame, total }) => {
   const { final, fade } = page;
   const out = tween(frame, fade.from, fade.to, [1, 0], fade.ease);
   const lift = tween(frame, fade.from, fade.to, [0, -24], fade.ease);
   const settle = final ? tween(frame, page.settleFrom, total - 1, [0, 1], EASE.inOut) : 0;
-  const shadow = final ? "0 8px 44px rgba(0,0,0,0.6)" : "0 6px 30px rgba(0,0,0,0.55)";
+  const shadow = final ? `0 8px 44px ${C.bg0}99` : `0 6px 30px ${C.bg0}8c`;
   const n = page.words.length;
 
   return (
@@ -36,8 +38,8 @@ const PageView: React.FC<{ page: Page; frame: number; total: number }> = ({ page
       style={{
         position: "absolute",
         top: final ? END_Y : CAPTION_Y,
-        left: final ? 40 : 90,
-        right: final ? 40 : 90,
+        left: final ? 40 : CAPTION_BAND.left,
+        right: final ? 40 : WIDTH - CAPTION_BAND.right,
         transform: `translateY(calc(-50% + ${lift}px)) scale(${1 + 0.04 * settle})`,
         opacity: out,
         textAlign: "center",
@@ -53,7 +55,7 @@ const PageView: React.FC<{ page: Page; frame: number; total: number }> = ({ page
       }}
     >
       {page.words.map(({ word, at }, i) => {
-        const p = tween(frame, at - 2, at + 8, [0, 1], EASE.out);
+        const p = tween(frame, at - WORD_LEAD, at + WORD_IN, [0, 1], EASE.out);
         const isEmph = page.emphasis.has(clean(word));
         const a = Math.round(40 + 60 * settle)
           .toString(16)

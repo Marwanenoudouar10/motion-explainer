@@ -1,6 +1,7 @@
 #!/bin/bash
 # Kill orphaned headless Chrome left behind by an interrupted render. Refuses while any
 # Remotion render/still is running (it would kill that render's browser).
+# Renders started from Remotion Studio's render button do not show in pgrep: finish or cancel them first.
 # usage: scripts/kill-chrome.sh
 if pgrep -f "remotion (render|still)" >/dev/null; then
   echo "a render is running:"; pgrep -fl "remotion (render|still)"; echo "not killing anything"; exit 1

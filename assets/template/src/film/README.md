@@ -1,16 +1,18 @@
 # The film: how to add a chapter
 
-Everything is data-driven: `chapters.ts` (timeline), `registry.ts` (id -> component),
-`data/` (captions, voice timing, tracker texts, audio clips), `handoffs.ts` (END contracts).
+Everything is data-driven: `config.ts` (FILM switches: tracker, captions), `chapters.ts` (timeline),
+`registry.ts` (id -> component), `data/` (captions, voice timing, counter texts, audio clips),
+`handoffs.ts` (END contracts for continuity joins).
 
 ## Files you READ (never edit, unless you own them)
 - `chapters.ts`  CHAPTERS: id, title, durationSec, transition (`cut|fade|focus`, how the chapter
-  ENTERS), counterKeys `[localSec, value]`, optional trackerHide. Derived: `FILM_START[id]`,
+  ENTERS), counterKeys `[localSec, value]` and trackerHide (only with FILM.tracker). Derived: `FILM_START[id]`,
   `FILM_TOTAL`, `chapterFrames(id)`, `toGlobalFrame/Sec(id, localSec)`.
-- `lib/counter.ts`  `counterAt(globalFrame)`, `counterAtLocal(id, localFrame)`, `counterNumber(v)`.
+- `lib/counter.ts`  `counterAt(globalFrame)`, `counterAtLocal(id, localFrame)`, `counterNumber(v)` (films with a counter).
 - `data/lines.ts` (one caption per script sentence), `data/voTiming.ts` (generated from the
-  voice), `data/tracker.ts` (label, max, chip rows), `data/audio.ts` (music / sfx / voice clips).
-- `handoffs.ts`  the upstream chapter's END as numbers. Your frame 0 equals it.
+  voice), `data/tracker.ts` (label, max, chip rows; only with a counter), `data/audio.ts` (music / sfx / voice clips).
+- `handoffs.ts`  the upstream chapter's END as numbers, for a join where the subject continues
+  (fade, focus, match cut). Your frame 0 equals it. After a hard `cut` you start a new scene.
 - `registry.ts`  only the orchestrator edits it. Unregistered chapters show a placeholder card.
 
 ## Add chapter C03
@@ -33,23 +35,25 @@ Everything is data-driven: `chapters.ts` (timeline), `registry.ts` (id -> compon
 ## Chapter contract
 - `useCurrentFrame()` is chapter-local: frame 0 = first frame, `chapterFrames(id)` long,
   including the transition overlaps.
-- TRANSPARENT root. Background, tracker, captions, grain and soundtrack are drawn for you.
+- TRANSPARENT root. Background, the counter's tracker (if any), captions, grain and soundtrack are drawn for you.
 - `fade`/`focus` transitions overlap the neighbours by 15 frames. The outgoing chapter stays
   OPAQUE underneath, so the upstream fades its translucent extras (glows, halos, shades)
   1 -> 0 over its last 15 frames and the downstream redraws them. START/END are numbers in
-  `handoffs.ts`; check with `scripts/qa/picture/handoff_diff.py C02 C03`.
-- Canvas 1080x1920. Subject of every beat in `HERO` (cy 860, y 380..1300) at >= 35% of the
-  frame width. Keep y 100..290 calm (tracker) and y 1300..1560 dark (captions): use
+  `handoffs.ts`; check with `scripts/qa/picture/handoff_diff.py C02 C03`. A `cut` has no contract:
+  only no layer mid-fade on either side of it.
+- Canvas WIDTH x HEIGHT (ASPECT in src/theme/layout.ts). The subject of every beat sits in HERO at
+  >= 35% of the short side. Keep CAPTION_BAND calm (and TRACKER_BAND, if FILM.tracker) with
   `<CaptionShade />` from `src/lib`.
 - Deterministic only: `random(seed)`, `@remotion/noise`, never Math.random or Date.
 - Palette `C` only (alpha OK: `${C.gold}88`). Fonts: `DISPLAY` (words), `MONO` (numbers).
-- Prefix every SVG id with your lower-case chapter id (`c03-glow`); define each once per page.
+- Name every SVG id `c03-<component>-<name>` (your lower-case chapter id first); define each once per page.
 - Never `return null` on a visible layer: fade it over 6+ frames.
 - Shared helpers you may import (never edit): `src/theme/*`, `src/lib/*` (EASE, tween, pop,
-  soft, pulse, SvgDefs, focusPull, CaptionShade), `src/film/lib/*`, kits in `src/kits/`.
+  soft, pulse, SvgDefs, focusPull, CaptionShade, Camera + Layer + worldToScreen), `src/film/lib/*`,
+  kits in `src/kits/`.
 - Sound tied to the animation: `<Sequence from={BEATS.x}><Audio src={staticFile(...)} /></Sequence>`
   inside the chapter (local time), or a line in `data/audio.ts` using `toGlobalSec`.
-- Want the counter's value? Drive the art FROM `counterAtLocal("C03", f)` so they never disagree.
+- A film with a counter: drive the art FROM `counterAtLocal("C03", f)` so they never disagree.
 
 ## Check your work (isolated: other chapters' errors cannot break it)
 ```bash
@@ -61,8 +65,10 @@ FULL=1 scripts/frame.sh C03 120           # full-resolution still
 ```
 `preview.sh` (re)generates `src/film/preview/C03.ts`, an entry that imports ONLY your chapter,
 with background and overlays shifted to its place in the film. Do not hand-edit it.
-Read the sheet and frames like a strict art director at 270 px wide ("this reads as ___").
+Read the sheet and frames like a strict art director at a 270 px short side ("this reads as ___").
 
 The demo chapters `C01` (an orb that splits) and `C02` (a spiral that grows from it) show the
 whole contract: beats with sync tags, an END derived from `handoffs.ts`, glows faded under the
 fade, art driven by the counter, a kit shared by two chapters. Delete them when you start.
+They show one form (a growing subject with a counter); a list or a comparison would use cut joins,
+no counter and no handoff numbers.
