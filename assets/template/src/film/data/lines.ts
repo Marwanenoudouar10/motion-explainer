@@ -62,10 +62,16 @@ export const CHAPTER_LINES: Partial<Record<ChapterId, LocalLine[]>> = {
 };
 
 // Real timing from the voice take (voTiming.ts, generated) overrides the planned times line by
-// line, as long as the word counts match.
+// line. Once a chapter has voice timing, every line must match it word for word: an edited,
+// added or removed caption word fails loudly here instead of silently falling back to planned
+// times (which would desync that line). With no voice yet (VO_TIMING empty), planned times rule.
 const timed = (id: ChapterId, i: number, l: LocalLine): LocalLine => {
-  const v = VO_TIMING[id]?.lines[i];
-  if (!v || !l.words || v.words.length !== l.words.length) return l;
+  const vo = VO_TIMING[id];
+  if (!vo) return l;
+  const v = vo.lines[i];
+  const n = l.words?.length ?? l.text.split(" ").length;
+  if (!v || v.words.length !== n)
+    throw new Error(`${id} line ${i + 1}: ${n} caption words vs ${v ? v.words.length : 0} timed: re-run scripts/audio/vo_split.py`);
   return { ...l, start: v.start, end: v.end, words: v.words };
 };
 

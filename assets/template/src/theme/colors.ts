@@ -12,6 +12,11 @@
  * keeps pink accents: bg0-bg2 + deep (Background), rose + ice (background specks; rose is
  * also the start of the tracker bar's gradient into gold), warm (CaptionShade "multiply"),
  * gold, text, textDim (tracker, captions). Placeholder cards use rose, warm and deep.
+ *
+ * Light styles (paper, whiteboard, line art): bg0 is the paper tone and text the ink colour.
+ * The caption halo and CaptionShade "dark" mode then lighten instead of darken; do not use
+ * "multiply" mode under dark text. scripts/qa/picture/caption_contrast.py reads `text` below
+ * and checks the band the other way round. Keep `text: "#RRGGBB"` on one line: it is parsed.
  */
 export const C = {
   // backgrounds (darkest -> lighter)

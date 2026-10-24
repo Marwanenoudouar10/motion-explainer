@@ -3,7 +3,9 @@
 # usage: scripts/frame.sh C05 0 45 120     chapter-local frames -> out/chapters/C05/frames/f45.png
 #        scripts/frame.sh film 300 900     global film frames   -> out/film/frames/f300.png
 #   default: cut from the latest preview (out/chapters/<id>/preview.mp4, or out/film/film-*.mp4);
-#            run preview.sh / render.sh first. Same scale as that render.
+#            run preview.sh / render.sh first. Same scale as that render. Warns when the preview
+#            is older than the chapter's code; a frame past the end of the preview is an error
+#            (exit 1), and an old fN.png of the same name is deleted first, never judged as new.
 #   FULL=1 scripts/frame.sh C05 45          render a full-resolution still instead (no mp4 needed)
 set -e
 cd "$(dirname "$0")/.."
@@ -17,9 +19,13 @@ else
 fi
 mkdir -p "$D/frames"
 if [ -z "$FULL" ] && [ -n "$SRC" ] && [ -f "$SRC" ]; then
+  [ "$ID" != "film" ] && [ -n "$(find "src/film/chapters/$ID" -type f -newer "$SRC" | head -1)" ] &&
+    echo "WARNING: $SRC is older than the code in src/film/chapters/$ID: re-run scripts/preview.sh $ID" >&2
   for f in "$@"; do
-    ffmpeg -y -loglevel error -i "$SRC" -vf "select=eq(n\,$f)" -vframes 1 "$D/frames/f$f.png"
-    echo "$D/frames/f$f.png"
+    OUTF="$D/frames/f$f.png"; rm -f "$OUTF"   # never leave an old frame under the new name
+    ffmpeg -nostdin -y -loglevel error -i "$SRC" -vf "select=eq(n\,$f)" -vframes 1 "$OUTF"
+    [ -f "$OUTF" ] || { echo "frame $f is not in $SRC (too short, or a range render): nothing written" >&2; exit 1; }
+    echo "$OUTF"
   done
 else
   [ "$ID" = "film" ] || ENTRY=$(scripts/entry.sh "$ID")

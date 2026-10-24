@@ -2,6 +2,11 @@
 
   ROOT                      project root (two levels above this file)
   fps(), transition()       FPS (src/theme/layout.ts) and TRANSITION frames (src/theme/timeline.ts)
+  layout()                  the chosen ASPECT row of FORMATS in src/theme/layout.ts:
+                            {aspect, w, h, hero: (cx, cy, top, bottom), tracker: (top, bottom),
+                             caption: (left, top, right, bottom)} at full resolution
+  film()                    {tracker, captions} switches from src/film/config.ts
+  text_rgb()                the caption colour C.text (r, g, b) from src/theme/colors.ts
   chapters()                [{id, title, dur, tr}] from src/film/chapters.ts, in film order
   starts(chs)               {id: global start frame}, same maths as layoutTimeline() in TS
   lines()                   {id: [{text, start, words}]} from CHAPTER_LINES in src/film/data/lines.ts
@@ -11,12 +16,15 @@
   write_vo_timing(out)      write voTiming.ts (chapter-local seconds)
   write_vo_words(out, ln)   write briefs/vo-words.md (the word table builders sync beats to)
   apply_durations(new)      set durationSec of chapters in chapters.ts: {id: seconds}
-The TS files are parsed with regexes, so keep their layout: one chapter per line in CHAPTERS,
-`  C01: [` blocks of `line([["text", from, to], ...])` in CHAPTER_LINES, no `"` inside texts.
+The TS files are parsed with regexes. chapters.ts: any key order, one object per chapter on one
+or several lines, no `{`, `}` or `"` inside titles (a row it cannot read stops the script).
+lines.ts: `  C01: [` blocks of `line([["text", from, to], ...])` in CHAPTER_LINES, no `"` inside
+texts. layout.ts: one aspect per line in FORMATS. config.ts and colors.ts: one key per line.
 """
 import json
 import os
 import re
+import sys
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 CHAPTERS_TS = os.path.join(ROOT, "src", "film", "chapters.ts")
@@ -46,11 +54,63 @@ def transition():
     return int(m.group(1)) if m else 15
 
 
-def chapters():
-    src = _read(CHAPTERS_TS)
+def layout():
+    """The chosen ASPECT row of FORMATS in src/theme/layout.ts (full-resolution pixels)."""
+    src = _read(os.path.join(ROOT, "src", "theme", "layout.ts"))
+    m = re.search(r'export const ASPECT\b[^=]*=\s*"([\d:]+)"', src)
+    aspect = m.group(1) if m else "9:16"
+    row = re.search(rf'^\s*"{re.escape(aspect)}"\s*:\s*\{{(.*)\}},?\s*$', src, re.M)
+    if not row:
+        sys.exit(f"src/theme/layout.ts: no FORMATS row for ASPECT {aspect!r}")
+    r = row.group(1)
+
+    def nums(key):
+        v = re.search(rf"\b{key}:\s*(\[[^\]]*\]|[\d.]+)", r)
+        if not v:
+            sys.exit(f"src/theme/layout.ts: FORMATS[{aspect!r}] has no {key}")
+        return tuple(float(x) for x in re.findall(r"[\d.]+", v.group(1)))
+
+    return {"aspect": aspect, "w": int(nums("w")[0]), "h": int(nums("h")[0]), "hero": nums("hero"),
+            "tracker": nums("tracker"), "caption": nums("caption")}
+
+
+def film():
+    """{tracker, captions} from src/film/config.ts (both true if the file is missing)."""
+    p = os.path.join(ROOT, "src", "film", "config.ts")
+    src = _read(p) if os.path.exists(p) else ""
+    flag = lambda k: not re.search(rf"\b{k}:\s*false\b", src)  # noqa: E731
+    return {"tracker": flag("tracker"), "captions": flag("captions")}
+
+
+def text_rgb():
+    """The caption colour C.text as (r, g, b), from src/theme/colors.ts."""
+    m = re.search(r'\btext:\s*"#([0-9A-Fa-f]{6})"', _read(os.path.join(ROOT, "src", "theme", "colors.ts")))
+    if not m:
+        sys.exit('src/theme/colors.ts: no `text: "#RRGGBB"` line (the caption colour)')
+    h = m.group(1)
+    return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
+
+
+def _chapters_body(src):
     body = src[src.index("export const CHAPTERS"):src.index("] as const")]
-    rows = re.findall(r'id: "(\w+)", title: "([^"]*)", durationSec: ([\d.]+), transition: "(\w+)"', body)
-    return [{"id": i, "title": t, "dur": float(d), "tr": tr} for i, t, d, tr in rows]
+    return body[body.index("[") + 1:]
+
+
+def chapters():
+    """Every chapter object in CHAPTERS, in any key order and on any number of lines."""
+    body = _chapters_body(_read(CHAPTERS_TS))
+    out = []
+    for o in re.findall(r"\{[^{}]*\}", body):
+        get = lambda k, pat: (re.search(rf"\b{k}:\s*{pat}", o) or [None, None])[1]  # noqa: E731
+        cid, dur = get("id", r'"(\w+)"'), get("durationSec", r"([\d.]+)")
+        if not (cid and dur):
+            sys.exit(f"chapters.ts: could not parse {' '.join(o.split())[:80]!r}")
+        out.append({"id": cid, "title": get("title", r'"([^"]*)"') or cid, "dur": float(dur),
+                    "tr": get("transition", r'"(\w+)"') or "cut"})
+    ids = re.findall(r'\bid:\s*"(\w+)"', body)
+    if [c["id"] for c in out] != ids:
+        sys.exit(f"chapters.ts: parsed {[c['id'] for c in out]} but found ids {ids}")
+    return out
 
 
 def starts(chs):
@@ -68,6 +128,10 @@ def lines():
     body = body[:body.index("\n};")]
     out = {}
     heads = list(re.finditer(r"\n  ([A-Za-z]\w*): \[", body))
+    found = re.findall(r"(?m)^\s*([A-Za-z]\w*)\s*:\s*\[", body)
+    if [m.group(1) for m in heads] != found:
+        sys.exit(f"lines.ts: read chapters {[m.group(1) for m in heads]} but CHAPTER_LINES has {found}: "
+                 "keep each chapter as `  C01: [` (two spaces) on its own line")
     for k, m in enumerate(heads):
         block = body[m.end(): heads[k + 1].start() if k + 1 < len(heads) else len(body)]
         lns = []
@@ -125,8 +189,19 @@ def write_vo_words(out, lns):
 
 
 def apply_durations(new):
+    """Set durationSec of the chapter objects in chapters.ts ({id: seconds}), wherever the key sits."""
     src = _read(CHAPTERS_TS)
+    start = src.index("export const CHAPTERS")
+    head, body = src[:start], src[start:]
     for cid, sec in new.items():
-        src = re.sub(rf'(id: "{cid}".*?durationSec: )[\d.]+', rf"\g<1>{sec}", src, count=1)
+        def one(m, sec=sec):
+            return re.sub(r"(\bdurationSec:\s*)[\d.]+", rf"\g<1>{sec}", m.group(0), count=1)
+        body, n = re.subn(rf'\{{[^{{}}]*\bid:\s*"{cid}"[^{{}}]*\}}', one, body, count=1)
+        if not n:
+            sys.exit(f"chapters.ts: no chapter object with id {cid}")
     with open(CHAPTERS_TS, "w") as f:
-        f.write(src)
+        f.write(head + body)
+    got = {c["id"]: c["dur"] for c in chapters()}
+    bad = [cid for cid, sec in new.items() if abs(got.get(cid, -1.0) - float(sec)) > 1e-9]
+    if bad:
+        sys.exit(f"chapters.ts: durationSec of {bad} did not update; check those rows by hand")

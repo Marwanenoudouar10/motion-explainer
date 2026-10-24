@@ -1,9 +1,11 @@
 # Storyboard (demo)
 
-How to read this: each chapter lists START (must equal the previous END), the timed beats
-with their VO words (chapter-local seconds), END as numbers (the next chapter's frame 0), and
-accuracy notes. Film-wide: 1080x1920, palette C only, hero in y 380-1300, captions
-y 1300-1560, tracker y 100-290, one accent colour (gold).
+How to read this: each chapter lists START (equal to the previous END when the subject
+continues), the timed beats with their VO words (chapter-local seconds, PLANNED: the real word
+times in briefs/vo-words.md win), END (as numbers when the next chapter continues the subject),
+and accuracy notes. Film-wide: the canvas, safe zones and overlays come from ASPECT in
+src/theme/layout.ts and src/film/config.ts. This demo is 9:16 with a counter: the subject in HERO,
+captions in CAPTION_BAND, the counter in TRACKER_BAND; palette C only, one accent colour (gold).
 
 ## C01 · One point
 6.0 s incl. overlaps (enters by cut) · kit orb

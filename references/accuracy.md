@@ -1,9 +1,9 @@
-# Accuracy for educational explainers
+# Accuracy for explainers (science, history, data, products)
 
 An explainer that is beautiful but wrong does harm at scale. Short-form videos get rewatched and shared without context. On the source film, facts were the biggest category of incidents (41). Separate fact-checkers rejected 29 research claims and made 6 data-table fixes. Most of the bad claims were plausible: a mixed-up counting convention, a consumer-site number, an overprecise percentage, an invented detail. Treat research output as a draft that has to survive a hostile reader.
 
 ## The workflow
-1. **Research.** Use 3-5 researchers, each on one range of the topic, returning packets in the schema below.
+1. **Research.** Use 3-5 researchers, each on one range of the film's backbone (eras, steps, items, places, dimensions or stages), returning packets in the schema below. Scale research to the form. A walkthrough of the user's own product needs its docs plus a click-through, not web researchers. A myth vs fact needs a primary source for each correction. A quote needs its original source.
 2. **Adversarial fact-check.** A separate agent checks each packet. The checker is told its job is to reject what it cannot verify.
 3. **`briefs/facts.md`.** Write only the survivors, in the format below, plus a "Rejected" list so nobody re-adds those claims.
 4. **Script.** Writers and judges use ONLY the verified facts. A judge checks every claim against the list.
@@ -13,12 +13,12 @@ An explainer that is beautiful but wrong does harm at scale. Short-form videos g
 
 ## Research packet schema
 ```js
-const PACKET = { type: 'object', required: ['milestones'], properties: { milestones: { type: 'array', items: { type: 'object',
-  required: ['when', 'fact', 'detail', 'visual', 'wow', 'sources', 'caveat'], properties: {
-    when:    { type: 'string', description: 'stage / date / depth / step, in the film convention' },
+const PACKET = { type: 'object', required: ['claims'], properties: { claims: { type: 'array', items: { type: 'object',
+  required: ['slot', 'fact', 'detail', 'visual', 'wow', 'sources', 'caveat'], properties: {
+    slot:    { type: 'string', description: "where it sits on the film's backbone: a stage, date, step, item, place or dimension, in the film's convention" },
     fact:    { type: 'string', description: 'one plain sentence a 12-year-old understands' },
     detail:  { type: 'string', description: 'precise technical version with numbers and units' },
-    visual:  { type: 'string', description: 'how it could be SHOWN in flat 2D animation' },
+    visual:  { type: 'string', description: "how it could be SHOWN in the film's style" },
     wow:     { type: 'number', description: '1-5: how surprising for a general audience' },
     sources: { type: 'array', items: { type: 'string' } },
     caveat:  { type: 'string', description: 'common myth or uncertainty to avoid; empty if none' } } } } } }
@@ -40,9 +40,9 @@ const CHECK = { type: 'object', required: ['verified', 'rejected'], properties: 
 ## Conventions and units
 - **Pick one convention per quantity and state it once,** lightly, early in the film. Examples: radius vs diameter (a factor of 2: cloud-physics figures often give radii, while viewers think in widths), two ways of counting the same age, BCE/CE vs "years ago", metric first with imperial in brackets only if the audience needs it, sea-level vs ground-level altitude, or local vs UTC time.
 - **Convert every source to that convention** and note the conversion in facts.md. The source film's worst cluster of errors came from mixing two counting conventions.
-- **Counters show completed units.** "Day 12" means 12 completed days, so the label is `floor(value)`. A counter switches on the visible stage beat, and the stage on the spoken word.
-- **Data tables must make sense physically.** Sizes only grow when the quantity grows, units stay consistent, and there are no seams where a measurement method changes (one table jumped 4.6 cm between two adjacent rows when the length type changed). Check every table with a small script before it reaches the screen.
-- **Comparisons.** Match "the size of ___" to the right measure: by length while things are small and by weight once weight is what people know. Order the comparisons so they only ever grow.
+- **If the film shows a counter, it shows completed units.** "Day 12" means 12 completed days, so the label is `floor(value)`. It changes on the beat that shows the change, and that beat lands on the spoken word.
+- **Data tables must make sense physically.** A value that should rise with the quantity never dips (a size that grows with age), units stay consistent, and there are no seams where a measurement method changes (one table jumped 4.6 cm between two adjacent rows when the length type changed). Check every table with a small script before it reaches the screen.
+- **Comparisons.** If the film compares a changing quantity to everyday things ("the size of ___", "as tall as ___"), match each to the right measure: by length while things are small and by weight once weight is what people know. Order them so they move with the quantity.
 
 ## Numbers and wording
 - **Round and hedge.** Say "about 8 in 10", not "83.6%". Put no percentage on screen without a primary source.
@@ -50,6 +50,15 @@ const CHECK = { type: 'object', required: ['verified', 'rejected'], properties: 
 - **Don't invent detail.** If a source doesn't say it, the film doesn't show it as fact. Simplification is fine; misleading is not. Write which one each choice is in the Accuracy note ("the layer lists are simplified; allowed").
 - **Mind the timing words.** "starts", "first" and "by" are claims. Check whether the thing really starts at that point, or was already happening earlier.
 - **Name the myths in the brief** so writers avoid them: for example, the tongue taste map, "we use 10% of our brain", or a lake of lava under every volcano.
+
+## Data stories
+A chart is a claim made of many numbers, so it fails in more ways than a sentence:
+- **Cite the dataset itself** (publisher, table, data year, retrieval date), not an article about it.
+- **Bars start at zero.** A line chart's axis starts elsewhere only when the label says so.
+- **Rescale an axis only between chapters,** and say so on screen or in the VO.
+- **Say what a number is:** a total, per person or a share. Never compare a total with a per-person value.
+- **Round to the source's precision or coarser,** and show uncertainty ranges when the source gives them.
+- **Check every animated value against the table with a script,** including the in-between values a roll passes through.
 
 ## A facts.md entry
 ```
@@ -65,13 +74,13 @@ Keep the wording rule ("Keep it this way") next to the fact, so captions, art an
 
 ## Visual accuracy (the picture is a claim too)
 - **Identifying features.** Before drawing a real thing, write its 2-3 identifying features into the storyboard (a cord has 3 spiralling vessels; a cinder cone has steep sides and a summit crater).
-- **Proportion tables.** Give each recurring subject a proportion table (a head-to-body ratio by stage, the relative sizes of parts). Polish checks the frames against it.
+- **Proportion tables.** Give each recurring subject a proportion table (the relative sizes of its parts; for a subject that grows, those ratios per stage). Polish checks the frames against it.
 - **Show the process the way it happens.** One example: a cavity that should swell from one side was first drawn opening from the centre.
 - **Counts on screen.** "Millions" can be a swarm, but no precise count appears unless it is sourced.
 - **Measure before you report.** When QA says "it shrinks" or "it's wrong", measure the right thing first. A head shrinking relative to the body was correct, and a QA finding that called it a bug was refuted.
 
 ## Tone
-- **The default tone** is wonder: calm and warm, curious, never alarmist or graphic.
+- **The tone follows the brief:** curious wonder for nature and science, storytelling for history, clear and confident for a product; always calm, never alarmist or graphic.
 - **Sensitive topics are neutral.** Use no gendered colour coding (pink/blue). Imply no blame, choice or feeling where there is none ("the first movements are spontaneous", not "it decides to move"). In disaster and history topics, be respectful to victims; no spectacle.
 - **Read each label against the image under it.** A neutral phrase can read as a political or moral statement over a particular picture. The source film changed a counter chip that would have said "no baby yet" over a fertilised cell to "last period · the count starts".
 - **Avoid anthropomorphic agency** unless it is clearly a metaphor ("the volcano wants to erupt" is not OK; "pressure builds until..." is).

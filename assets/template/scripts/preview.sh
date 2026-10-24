@@ -6,7 +6,8 @@
 #                                           -> out/chapters/<id>/scratch/range-60-120.mp4 (+ -sheet.jpg)
 #   CAPTIONS=0 scripts/preview.sh C05       no captions (caption-band contrast QA)
 #                                           -> out/chapters/<id>/scratch/nocap.mp4 (+ -sheet.jpg)
-# Sheet: one tile every 15 frames, left->right, top->bottom (tile k = chapter-local frame 15k).
+# Sheet: one tile every 15 frames, left->right, top->bottom (tile k = chapter-local frame 15k;
+# for a FRAMES=a-b range, tile k = frame a + 15k).
 # Runs under nice -n 15 with 4 threads, so the machine stays usable. One render at a time.
 set -e
 cd "$(dirname "$0")/.."

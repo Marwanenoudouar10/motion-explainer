@@ -1,5 +1,5 @@
 /**
- * CHAPTER CONFIG for the film (composition "Film"). The timeline, progress tracker,
+ * CHAPTER CONFIG for the film (composition "Film"). The timeline, the counter (if any),
  * placeholder cards and per-chapter previews are all derived from CHAPTERS, so re-timing
  * or re-ordering the film means editing this list only. Only the orchestrator edits it.
  *
@@ -8,21 +8,27 @@
  *   title        Working title. Shown on the placeholder card only, never in the film.
  *   durationSec  Chapter length in seconds, INCLUDING its transition overlaps.
  *   transition   How this chapter ENTERS from the previous one (ignored for the first):
- *                  "cut"   hard cut, no overlap
- *                  "fade"  FILM_TRANSITION-frame crossfade (match cut: same subject both sides)
+ *                  "cut"   hard cut, no overlap: a new scene, card or place. No END contract
+ *                          unless it is a match cut (handoff_diff.py --match).
+ *                  "fade"  FILM_TRANSITION-frame crossfade (the same subject continues on both sides)
  *                  "focus" FILM_TRANSITION-frame focus pull (old shot defocuses, new pulls in)
- *                "fade" and "focus" overlap the two chapters by FILM_TRANSITION frames.
- *   counterKeys  [chapterLocalSec, value][] keyframes of the progress tracker. The value eases
+ *                "fade" and "focus" overlap the two chapters by FILM_TRANSITION frames, and the
+ *                subject continues: the upstream's END is a numeric contract (handoffs.ts).
+ *   counterKeys  Only with FILM.tracker (src/film/config.ts); leave it out otherwise.
+ *                [chapterLocalSec, value][] keyframes of the counter. The value eases
  *                (EASE.inOut) between keys and holds before/after. The label shows floor(value),
  *                so a key [t, 4] flips the number to 4 at t; the rolling digits land ~0.45 s
- *                later, so put a key ~0.45 s BEFORE its spoken word. To jump 2 -> 4
- *                without lingering on 3, hold first: [[3.4, 2], [4.45, 2], [4.5, 4]].
+ *                later, so put a key ~0.45 s BEFORE its spoken word. Each SPOKEN value rests
+ *                >= 1.4 s; unspoken in-between values share the time left (~0.85 s each) or
+ *                roll through in one quick run. Never flip while a caption still names the old
+ *                value. To jump 2 -> 4 without lingering on 3, hold first:
+ *                [[3.4, 2], [4.45, 2], [4.5, 4]]. The orchestrator owns the keys; agents propose.
  *   trackerHide  Optional [fromSec, toSec][] chapter-local windows where the tracker fades out.
  *
- * Keep ONE chapter per line, keys in this order (id, title, durationSec, transition, ...) and no
- * `"` inside titles: the Python scripts (scripts/audio/project.py) parse this list with regexes.
+ * No `{`, `}` or `"` inside titles: the Python scripts (scripts/audio/project.py) parse this
+ * list (any key order, one object or several lines per chapter).
  *
- * Derived (all frames are GLOBAL film frames @30fps):
+ * Derived (all frames are GLOBAL film frames at FPS):
  *   FILM_TRANSITION, FILM_START[id], FILM_TOTAL, chapterFrames(id), chapterSpec(id),
  *   overlapIn(id), toGlobalFrame(id, localSec), toGlobalSec(id, localSec)
  */
@@ -36,7 +42,7 @@ export type ChapterSpec = {
   title: string;
   durationSec: number;
   transition: TransitionKind;
-  counterKeys: readonly (readonly [number, number])[];
+  counterKeys?: readonly (readonly [number, number])[];
   trackerHide?: readonly (readonly [number, number])[];
 };
 

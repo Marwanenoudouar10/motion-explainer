@@ -1,6 +1,8 @@
 /**
- * What the progress tracker (top band, y 100..290) says. Topic data only: the tracker's
- * look and motion live in overlays/Tracker.tsx. The VALUE comes from CHAPTERS[].counterKeys.
+ * What the counter's tracker (top band, TRACKER_BAND) says. Only used with FILM.tracker
+ * (src/film/config.ts): most explainers count nothing, so switch it off there instead of
+ * inventing a counter. Topic data only: the tracker's look and motion live in
+ * overlays/Tracker.tsx. The VALUE comes from CHAPTERS[].counterKeys.
  *
  *   TRACKER.label     left text before the rolling number ("STEP", "YEAR", "KM", "DAY")
  *   TRACKER.digits    zero-padded digits of the number (2 -> "04")

@@ -11,7 +11,8 @@ usage: scripts/qa/audio/stems.sh && python3 scripts/qa/audio/phone_mix.py [stem 
    with_body, synth.py thump). Quiet low beds are allowed to vanish; --all lists every window.
 Fixes: duck the effect under the words with a volume envelope (it lands ~2 frames late, start
 it 0.07 s early), EQ a 2.5 kHz dip into risers/beds, or lower the clip's volume.
-Exit 1 if any word fails rule 1.
+Exit 1 if any word fails rule 1, or if there are no voice timings (a narrated film must run
+scripts/audio/vo_split.py first; a music-led or text-only film has no words and skips this probe).
 """
 import math
 import os
@@ -51,13 +52,14 @@ def main(d):
     vpath, fpath = os.path.join(d, "voice.wav"), os.path.join(d, "fx.wav")
     if not (os.path.exists(vpath) and os.path.exists(fpath)):
         sys.exit("no stems: run scripts/qa/audio/stems.sh first")
+    ws, fails, levels, fulls = words(), 0, [], []
+    if not ws:
+        sys.exit("no voice timings (src/film/data/voTiming.ts is empty): a narrated film needs "
+                 "scripts/audio/vo_split.py first; a music-led or text-only film skips this check")
     v_sp, f_sp = decode(vpath, SPEECH), decode(fpath, SPEECH)
     v_ph, f_ph = decode(vpath, PHONE), decode(fpath, PHONE)
     f_full = decode(fpath)
     v_full = decode(vpath)
-    ws, fails, levels, fulls = words(), 0, [], []
-    if not ws:
-        sys.exit("no voice timings yet (src/film/data/voTiming.ts is empty): run scripts/audio/vo_split.py")
     print("word            time | speech band voice / fx / margin | phone voice / fx")
     for w, a, b in ws:
         vs, fs = db(rms(v_sp, a, b)), db(rms(f_sp, a, b))

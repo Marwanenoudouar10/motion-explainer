@@ -1,9 +1,9 @@
 /**
- * The whole film (composition "Film", FILM_TOTAL frames, 1080x1920 @30fps).
+ * The whole film (composition "Film", FILM_TOTAL frames, WIDTH x HEIGHT at FPS: src/theme/layout.ts).
  *
- *   Background (warms over the film)
+ *   Background (warms over the film; arc={false} for a constant backdrop)
  *   TransitionSeries of CHAPTERS (registry component or placeholder; cut / fade / focus)
- *   Overlays (tracker + captions) -> Grain -> Soundtrack
+ *   Overlays (tracker if FILM.tracker, captions if FILM.captions) -> Grain -> Soundtrack
  *
  *   <Film />                  everything comes from chapters.ts, registry.ts, data/*
  *   <Film captions={false} /> no captions (render with --props='{"captions":false}' for

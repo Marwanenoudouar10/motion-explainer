@@ -17,11 +17,18 @@ Method:
      burst after a closure, or the voicing rise for vowel words).
 Measured on 73 hand-checked words: mean error 0.022 s, 68/73 within 80 ms. Misses are glides
 and liquids with no acoustic boundary (layers, wiggle): fix those by hand in briefs/vo-fix.json.
-kind per word: S/D/F = acoustic candidate, G = whisper guide fallback (H = hand fix, vo_split).
+kind per word: S/D/F = acoustic candidate, G = whisper guide fallback (H = hand fix, E = line-end
+fix, vo_split).
+Language: the spelling rules (step 3, refine) are English. With WHISPER_LANG set to another
+language they are switched off (language-neutral mode: any word may start on any candidate, the
+broadband envelope refines it, no syllable term), so spot-check twice as many words.
 """
 import re
 
-from aligner import ON, SIL, HOP, envelope, guides, syl, wclass, whisper
+from aligner import LANG, ON, SIL, HOP, envelope, guides, syl, wclass, whisper
+
+NEUTRAL = LANG != "en"
+_said = []
 
 LAG, LAM, SKIP_W, SKIP_F, SKIP_S, ALPHA = 0.14, 0.004, 0.12, 0.25, 0.15, 0.05
 GLIDE = 10.0  # max dip depth credited to a w/y/l/r word
@@ -59,9 +66,9 @@ def cands(bb, lo, hi):
 def refine(c, word, bb, lo, hi):
     """Onset frame of `word` given its matched candidate."""
     f, kind, _ = c
-    n, cl = len(bb), wclass(word)
+    n, cl = len(bb), ("C" if NEUTRAL else wclass(word))
     if kind == "S":
-        son = cl == "V" or re.match("(w|y|l|r|m|n|the|tho)", word.lower())
+        son = not NEUTRAL and (cl == "V" or re.match("(w|y|l|r|m|n|the|tho)", word.lower()))
         band, thr = (lo, -40.0) if son else (bb, -45.0)
         end = next((i for i in range(f, min(n, f + 80)) if bb[i] < SIL), min(n, f + 80))
         thr = min(thr, max(band[f:end]) - 20)
@@ -92,6 +99,9 @@ def refine(c, word, bb, lo, hi):
 
 def onsets(path, words, tmp):
     """Onset (clip s) of every caption word, the candidate kind used, and whisper's words."""
+    if NEUTRAL and not _said:
+        print(f"onsets: language-neutral mode ({LANG}), spot-check more words (briefs/vo-fix.json)")
+        _said.append(1)
     bb, lo, hi = (envelope(path, k) for k in ("bb", "lo", "hi"))
     heard = whisper(path, tmp)
     n, INF = len(words), 1e9
@@ -106,9 +116,11 @@ def onsets(path, words, tmp):
 
     def match(i, j):
         t, k, d, _, gi = C[j]
-        wc = wclass(words[i])
+        wc = "C" if NEUTRAL else wclass(words[i])
         if k == "G":
             return (SKIP_F if wc == "F" else SKIP_W) if gi == i else INF
+        if NEUTRAL:  # no spelling gates: the nearest strong candidate wins
+            return abs(t - e[i]) - LAM * d
         if k == "F" and wc not in "FPH" or k == "D" and wc == "F":
             return INF
         son = wc == "V" or re.match("[mnlrwy]", words[i].lower())
@@ -130,6 +142,7 @@ def onsets(path, words, tmp):
     for c in C:
         ps.append(ps[-1] + (c[1] == "S" and c[2] == 40))
         pd.append(pd[-1] + (c[1] == "D"))
+    alpha = 0.0 if NEUTRAL else ALPHA  # syllables come from English spelling
     for i in range(1, n):
         inner = syl(words[i - 1]) - 1  # dips expected inside the previous word
         for j in range(m):
@@ -138,11 +151,11 @@ def onsets(path, words, tmp):
                 continue
             for jp in range(j):  # skipping a pause onset costs SKIP_S; dips should match syllables
                 if f[i - 1][jp] < INF and C[jp][0] <= C[j][0] - 0.04:
-                    v = f[i - 1][jp] + mc + SKIP_S * (ps[j] - ps[jp + 1]) + ALPHA * abs(pd[j] - pd[jp + 1] - inner)
+                    v = f[i - 1][jp] + mc + SKIP_S * (ps[j] - ps[jp + 1]) + alpha * abs(pd[j] - pd[jp + 1] - inner)
                     if v < f[i][j]:
                         f[i][j], bk[i][j] = v, jp
     last = syl(words[-1]) - 1
-    j = min(range(m), key=lambda j: f[n - 1][j] + ALPHA * abs(pd[m] - pd[j + 1] - last))
+    j = min(range(m), key=lambda j: f[n - 1][j] + alpha * abs(pd[m] - pd[j + 1] - last))
     asg = [0] * n
     for i in range(n - 1, -1, -1):
         asg[i], j = j, bk[i][j]

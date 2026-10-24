@@ -1,5 +1,6 @@
 /**
- * The progress counter's value over the film, derived from CHAPTERS[].counterKeys.
+ * The counter's value over the film, derived from CHAPTERS[].counterKeys (films with a counter
+ * only: FILM.tracker in src/film/config.ts; a chapter without keys adds none).
  *
  *   COUNTER_KEYS              [globalFrame, value][] sorted, strictly increasing frames
  *   counterAt(frame)          fractional value at a GLOBAL frame (eased between keys, clamped)
@@ -10,7 +11,7 @@
  */
 import { interpolate } from "remotion";
 import { EASE } from "../../lib/ease";
-import { CHAPTERS, ChapterId, chapterFrames, toGlobalFrame } from "../chapters";
+import { CHAPTERS, ChapterId, chapterFrames, chapterSpec, toGlobalFrame } from "../chapters";
 import { TRACKER } from "../data/tracker";
 
 export type CounterKey = [frame: number, value: number];
@@ -18,7 +19,7 @@ export type CounterKey = [frame: number, value: number];
 const buildKeys = (): CounterKey[] => {
   const raw: CounterKey[] = [];
   for (const c of CHAPTERS) {
-    for (const [s, v] of c.counterKeys) raw.push([toGlobalFrame(c.id, s), v]);
+    for (const [s, v] of chapterSpec(c.id).counterKeys ?? []) raw.push([toGlobalFrame(c.id, s), v]);
   }
   raw.sort((a, b) => a[0] - b[0]);
   // Same frame twice (overlapping chapters): the later chapter wins.

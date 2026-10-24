@@ -1,6 +1,6 @@
 # Lessons: the mistakes catalogue
 
-These are the mistakes AI agents made while building a 30 s pilot and then a 2.5-minute, 17-chapter vertical explainer, with what fixed each one and the rule that prevents it. The topic was biology, but every lesson here is generic. Read this file before the first chapter, and again whenever a frame looks wrong. Add new entries to the project's copy (`docs/lessons.md`) after every chapter.
+These are the mistakes AI agents made while building a 30 s pilot and then a 2.5-minute, 17-chapter vertical explainer, with what fixed each one and the rule that prevents it. The topic was biology and the form was a growing subject under a counter, but the lessons are generic; the few that apply only to some forms (a counter, continuity joins) say so. Read this file before the first chapter, and again whenever a frame looks wrong. Add new entries to the project's copy (`docs/lessons.md`) after every chapter.
 
 Each entry has three parts: **Mistake**, what went wrong; **Fix**, what solved it, with numbers where measured; **Rule**, what to do from the start.
 
@@ -8,10 +8,10 @@ Each entry has three parts: **Mistake**, what went wrong; **Fix**, what solved i
 | Area | Incidents | The one thing to remember |
 |---|---|---|
 | Facts | 41 | Separate adversarial fact-check; primary sources only |
-| Orchestration | 36 | 1-3 agents, story order, skeptic-verify every QA finding |
+| Orchestration | 36 | 2 agents in two lanes, story order, skeptic-verify every QA finding |
 | Composition and readability | 24 | 270 px test: "this reads as ___" |
-| Timing and sync | 14 | Voice first; every frame is `BEATS.x` +/- an offset |
-| Handoffs | 13 | The END is a numeric contract; diff the real frames |
+| Timing and sync | 14 | Timing source first; every frame is `BEATS.x` +/- an offset |
+| Handoffs | 13 | On continuity joins the END is a numeric contract; diff the real frames |
 | Captions and safe zones | 12 | Measure the band with captions off: 4.5:1 or better |
 | Audio | 9 | Zero first sample; voice +6 dB in 1-4 kHz; phone body |
 | Performance | 9 | `nice`, scale 0.4, `overflow: hidden` |
@@ -40,17 +40,17 @@ Builders landed at about 6/10 every time, even with the rules in CLAUDE.md. An i
   - catchlight dots removed;
   - dark loops warmed;
   - tapered shapes with real anatomy (nail, knuckle creases).
-- **Rule:** At every beat frame, view the hero at 270 px wide and write "this reads as ___". Treat any face, animal or body-part read as a bug, and fix it in the kit if the shape comes from a kit.
+- **Rule:** At every beat frame, view the hero with the frame's short side at 270 px and write "this reads as ___". Treat any face, animal or body-part read as a bug, and fix it in the kit if the shape comes from a kit.
 
 **The subject was too small**
 - **Mistake:** The named subject filled only 16-28% of the frame width. The camera framed the whole character, so the hand on the word "fingers" was 42 px wide on a phone.
 - **Fix:** Rebuilt the camera curves to frame the PART at 35-40% on its beat.
-- **Rule:** The subject of the beat (not the character) takes at least 35% of the frame width, and non-focal layers are dimmed by 40% or more.
+- **Rule:** The subject of the beat (not the character) takes at least 35% of the frame's short side, and non-focal layers are dimmed by 40% or more.
 
 **Details invisible on a phone**
 - **Mistake:** Particles, dots and indicator lines were 1-2 px wide.
 - **Fix:** Bigger cores with a 3x halo, and bigger windows.
-- **Rule:** A beat-carrying detail has a core of at least 8 px at full resolution, and lines and windows are at least 40 px.
+- **Rule:** A beat-carrying detail has a core of at least 8 px per 1080 px of the frame's short side, and lines and windows are at least 40 px.
 
 **Generic primitives instead of the real thing**
 - **Mistake:** The scenes used soap-bubble circles, pillow walls, a glass box that read as ice, a loaf-shaped foot, a two-line "ladder" cord, a lens-flare impact, stacked rings that formed a target, and comb-straight rows.
@@ -86,7 +86,7 @@ Builders landed at about 6/10 every time, even with the rules in CLAUDE.md. An i
 
 **Stacked lines and 3-row captions**
 - **Mistake:** A line faded out over end+6..end+16, so when the next line came within 0.33 s the two overlapped. Long sentences wrapped to 3-6 rows and covered the art.
-- **Fix:** `fadeEnd = min(end+16, nextFirstWord-2)`, and paging at phrase starts, preferring punctuation.
+- **Fix:** `fadeEnd = min(end+16, nextFirstWord-2)`, later corrected to `nextFirstWord-3` because each word starts fading in 2 frames before its onset (a 1-frame gap remained), and paging at phrase starts, preferring punctuation.
 - **Rule:** No two lines on screen at once, and 2 rows at most. Check a captions-only render of the whole film after every script or voice change.
 
 **A weak ending**
@@ -111,14 +111,14 @@ Builders landed at about 6/10 every time, even with the rules in CLAUDE.md. An i
 - **Rule:** Use a focus transition whenever the silhouettes are similar but not identical.
 
 **The upstream changed mid-build**
-- **Mistake:** The upstream re-timed or re-tilted after the downstream had copied its END.
-- **Rule:** Polish re-diffs against the upstream's FINAL last frame. The orchestrator regenerates packs whenever an END changes, and runs one join pass at the end.
+- **Mistake:** The upstream re-timed or re-tilted after the downstream had copied its END: a downstream chapter copied a clock and lineage before its upstream's re-time, because chapter N's polish ran alongside N+1's build.
+- **Rule:** A continuing chapter starts only after its upstream's polish returns the real END (lane 1 of the two lanes in `orchestration.md`). Polish re-checks the numbers against the upstream's FINAL END. The orchestrator regenerates packs whenever an END changes, and runs one pixel join pass at the end.
 
 ## Timing and voice
 
 **Built to planned words**
 - **Mistake:** Chapters were timed to the storyboard's planned times. Against the real take, they were 0.07-0.8 s off.
-- **Rule:** Voice first, and build to `vo-words.md`.
+- **Rule:** Timing source first (the voice, for a narrated film), and build to `vo-words.md`.
 
 **whisper drift**
 - **Mistake:** whisper.cpp `base.en` word times drift 0.2-0.6 s, and the aligner put one word 0.4-0.65 s early. A table spread by word length inside a phrase was up to 0.3 s late.
@@ -130,9 +130,31 @@ Builders landed at about 6/10 every time, even with the rules in CLAUDE.md. An i
 - **Fix:** A repair pass found each chapter's speech span and cut at the lowest-energy 5 ms frame inside the longest silence between chapters. It kept each clip's source-to-film mapping, so no word moved in the film. Every clip was then transcribed to check its first and last words.
 - **Rule:** Build nothing until every clip passes the transcript check, and never re-run the naive splitter after a repair.
 
+**Re-timing built chapters after a voice repair**
+- **Mistake:** After the voice was repaired, nobody noticed in the previews that 5 of 9 built chapters were now 0.44-0.81 s off their words; a 30-line drift script found it.
+- **Fix:** One chapter at a time: save frame 0 and the END, edit `beats.ts` data only, simulate the timeline, check the two frames again, then an independent verifier pulled the frame at every word. All 7 re-timed chapters kept frame 0 and the END pixel-identical, so no neighbour needed re-work. A loop that had to start on a new word kept its END clock with a catch-up blend.
+- **Rule:** After any timing-source change, run `sync_drift.py` on every built chapter and re-time by `pipeline.md` 5b (`retime_guard.py` save/check).
+
+**State derived from a beat moved the END**
+- **Mistake:** A 64-cell layout took its slots from the pose at a mid-chapter beat, so moving that beat would have re-shuffled 35 of 64 cells in the END; a bob phase anchored to another beat moved the END by 1.5 px.
+- **Fix:** Both were pinned to constants (a layout seed and a phase seed), and the re-time left the END identical.
+- **Rule:** Anchor whatever frame 0 or the END depends on to constants, never to a beat frame (rules.md T8).
+
+**The voice made a rule impossible**
+- **Mistake:** Two synced words were 7.8 frames apart, under the 12-frame hold; a cascade of splits got 6-7 frames each where its spring needed 11. Moving beats off their words to meet the rules would have broken the sync.
+- **Fix:** Reviewers logged the first as a voice-bound exception and chained the springs for the second (each split starts where its parent is drawn); both read cleanly at phone size.
+- **Rule:** Keep the sync, tag the beat `[accept: <why>]`, list it in `RESUME.md`, and chain springs from the drawn position (rules.md T9).
+
 **Hard-coded timings broke on re-time**
 - **Mistake:** Durations and keys were hard-coded, a clamp overrode a designed stagger, a split began on a spring overshoot, and a close-up shrank to 11 frames.
 - **Rule:** Every frame is `BEATS.x` plus or minus an offset. Simulate the windows after every re-time.
+
+## A counter (films that show one)
+
+**Counter values off their words**
+- **Mistake:** The counter landed before its spoken number in 3 chapters. A 1.4 s hold for every value left no room for the unspoken values in between (two got about 1.2 s each), and at two chapter joins the counter was about to flip while the previous caption still named the old value.
+- **Fix:** Key = the spoken number's onset minus the roll time (about 0.45 s); unspoken values share the time left (about 0.85 s each) or roll through quickly; keys checked at the exact frames of the number words on a tracker-band render. The orchestrator owned the keys; agents only proposed them.
+- **Rule:** `pipeline.md` step 10, "Counter keys"; rules T5 and T7.
 
 ## Audio
 
@@ -168,12 +190,13 @@ Builders landed at about 6/10 every time, even with the rules in CLAUDE.md. An i
 - **Fix:** `overflow: hidden` on the layer, with blur clipped to the frame and consolidated into one filter per group.
 
 **Too many parallel agents**
-- **Mistake:** Up to 17 agents ran at once and 5-6 rendered at the same time. The load reached 48-70, previews took 5-15x longer, the user's Mac became unusable and agents died.
-- **Rule:** 1-2 render agents (3 at most with packs and range renders), one render per agent, `nice -n 15`, previews at scale 0.4.
+- **Mistake:** Up to 17 agents ran at once and 5-6 rendered at the same time. The load reached 48-70, previews took 5-15x longer, the 10-core Mac became unusable and agents died. A 3-at-a-time speed-up was tried later and dropped.
+- **Fix:** A budget of 2 agents in two lanes (the chapter chain plus one independent job) roughly doubled throughput without raising the load.
+- **Rule:** The agent budget (2 by default), in two lanes (`orchestration.md`), one render per agent, `nice -n 15`, previews at scale 0.4.
 
 **Orphans and sleep**
 - **Mistake:** A headless Chrome kept running after an interrupted run, and an overnight run stalled when the Mac slept.
-- **Rule:** Kill `chrome-headless-shell` only when nothing renders, and run long jobs under `caffeinate -i`.
+- **Rule:** Kill `chrome-headless-shell` only when nothing renders, and run long jobs under `caffeinate -i` (macOS; on Linux, `systemd-inhibit`).
 
 ## Orchestration
 
@@ -221,9 +244,9 @@ Builders landed at about 6/10 every time, even with the rules in CLAUDE.md. An i
 
 ## Kits (the pattern to copy)
 On the source film, three topic kits drove 17 chapters: a character for stage A, the same character for stage B, and a world. That kept the subject looking like the same individual across chapters. Each kit was:
-- one component driven by a single time parameter;
+- one component driven by its state parameters;
 - an anchors function, so chapters could attach effects;
 - presets for recurring looks;
 - a showcase sheet and morph rendered before any chapter used it.
 
-Build topic kits like these for your own subject: a volcano and its chamber, a city that grows over centuries, a product with its states. Fix shape problems ONCE in the kit, and every chapter improves.
+Build kits like these for whatever recurs in your film: a volcano and its chamber, a city that grows over centuries, a product with its states, a chart that builds, a map with its route. Fix shape problems ONCE in the kit, and every chapter improves.

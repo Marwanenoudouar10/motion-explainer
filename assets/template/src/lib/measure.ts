@@ -11,7 +11,8 @@ import { continueRender, delayRender } from "remotion";
 import { loadFont as loadSora } from "@remotion/google-fonts/Sora";
 import { loadFont as loadMono } from "@remotion/google-fonts/JetBrainsMono";
 
-// Same weights/subsets as src/theme/fonts.ts, so these resolve to the same downloads.
+// Same weights/subsets as src/theme/fonts.ts, so these resolve to the same downloads (change
+// both together, e.g. for a non-English script).
 const sora = loadSora("normal", { weights: ["600", "800"], subsets: ["latin"] });
 const mono = loadMono("normal", { weights: ["500", "700"], subsets: ["latin"] });
 

@@ -19,7 +19,7 @@ export const DUR = chapterFrames("C02"); // 210 = 7.0 s including the fade-in
 export const BEATS = {
   migrate: s(0.6), // sync: "Give" (0.60) the four drift toward their slots in the spiral
   settled: s(1.9), // free: the four sit in slots 0..3 (just before growth starts)
-  growStart: s(1.95), // sync: "grows" (2.11) counter key 4: new orbs start popping in, outward
+  growStart: s(2.11) - 4, // sync: "grows" (2.11) counter key 4 at 1.95 s: growth leads the word
   gold: s(2.8), // sync: "pattern." (2.84) a gold wave runs out through the spiral
   growEnd: s(3.1), // free: counter key 64: the last orb has popped in
   title: s(4.5), // sync: "Start" (4.60) the art steps back (halos down 40 %) under the end title

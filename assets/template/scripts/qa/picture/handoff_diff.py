@@ -1,7 +1,10 @@
 """Handoff check: does the downstream chapter's first frame equal the upstream's END?
 
-usage: python3 scripts/qa/picture/handoff_diff.py C01 C02 [--scale 0.5]
+usage: python3 scripts/qa/picture/handoff_diff.py C01 C02 [--scale 0.5] [--match]
        python3 scripts/qa/picture/handoff_diff.py up.png down.png
+Only continuity joins have an END contract: a downstream that enters by `fade` or `focus`, or a
+`cut` used as a match cut (pass --match). A hard `cut` to a new scene exits 0 without rendering:
+check only that no layer is mid-fade on either side of it (scripts/frame.sh on both sides).
 Chapter mode renders two stills (nice, no captions, isolated preview entries):
   upstream at the frame the downstream starts on (DUR - 15 for fade/focus, the last frame
   for a cut) and downstream frame 0, then diffs them (all channels, 0-255):
@@ -58,6 +61,10 @@ def main(a, b):
     scale = sys.argv[sys.argv.index("--scale") + 1] if "--scale" in sys.argv else "0.5"
     chs = {c["id"]: c for c in P.chapters()}
     up, down = chs[a], chs[b]
+    if down["tr"] == "cut" and "--match" not in sys.argv:
+        print(f"{a} -> {b} is a hard cut: no continuity contract, nothing to diff "
+              f"(a match cut? re-run with --match). Check that no layer is mid-fade on either side.")
+        return True
     frames = round(up["dur"] * P.fps())
     at = frames - P.transition() if down["tr"] != "cut" else frames - 1
     d = os.path.join(P.ROOT, "out", "qa", "handoffs", f"{a}-{b}")
